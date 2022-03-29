@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 import os
+from sqlalchemy import create_engine
 
 ACCESS_KEY = '93c9fdad5d7027815a553c9ada1d778b'
 
@@ -62,6 +63,23 @@ def save_processed_file(data):
     
     return(file_path) 
 
+def store_in_db(file_path):
+    """Insert dataframe in Postgres DB."""
+    transformed_data = pd.read_csv(file_path)
+    transformed_data.columns = [c.lower() for c in
+                                    transformed_data.columns]  # postgres doesn't like capitals or spaces
+
+    transformed_data.dropna(axis=0, how='any', inplace=True)
+    engine = create_engine(
+        'postgresql://airflow:airflow@postgres/testfligoo')
+
+    transformed_data.to_sql("testdata",
+                                engine,
+                                if_exists='append',
+                                chunksize=500,
+                                index=False
+                                )
+
 default_args = {
     'owner': 'fligoo',
     'start_date': days_ago(7),
@@ -81,14 +99,23 @@ with DAG(dag_id='aaa_flights_data_read',
         python_callable=read_save_json,
         dag=dag
     )
+
     process_and_save_data = PythonOperator(
         task_id='create_flights_data',
         python_callable=create_flights_data,
         op_kwargs={"file_path": "{{ti.xcom_pull('read_save_json')}}"},
         dag=dag
     )
+    
+    save_into_db = PythonOperator(
+        task_id='store_in_db',
+        python_callable=store_in_db,
+        op_kwargs={"file_path": "{{ti.xcom_pull('create_flights_data')}}"},
+        dag=dag
+    )
 
 (
     get_and_save_json_data >> process_and_save_data
+    >> save_into_db
 
 )
