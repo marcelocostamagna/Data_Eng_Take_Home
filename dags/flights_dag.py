@@ -7,17 +7,30 @@ from datetime import timedelta
 import json
 import pandas as pd
 import requests
+from datetime import datetime
+import os
 
+ACCESS_KEY = '93c9fdad5d7027815a553c9ada1d778b'
 
-def read_json():
-    """Read json data from flights API."""
-    response=requests.get('http://api.aviationstack.com/v1/flights?access_key=93c9fdad5d7027815a553c9ada1d778b&flight_status=active&limit=100')
+def read_save_json():
+    """Read json data from flights API and save it to local folder."""
+    response=requests.get('http://api.aviationstack.com/v1/flights?access_key=' + ACCESS_KEY + '&flight_status=active&limit=100')
     data_dict = response.json()
     
-    return data_dict
+    folder_name = "./jsons/"
+    os.makedirs(folder_name, exist_ok=True)
+    file_path =  folder_name + datetime.now().strftime('%Y_%m_%d_%H_%M_%S') + ".json"
 
-def create_flights_data(data_dict):
-    """Unnest json data from dictionary and retreive useful columns."""
+    with open( file_path, 'w') as file:
+        json.dump(data_dict, file)
+
+    return file_path
+
+def create_flights_data(file_path):
+    """Read json data  and retreive useful columns."""
+    with open(file_path) as file:
+        data_dict = json.load(file)
+    
     df_raw = pd.DataFrame.from_dict(data_dict['data'])
     
     data = df_raw[['flight_date', 'flight_status']]
@@ -25,18 +38,29 @@ def create_flights_data(data_dict):
     data[['arrival_airport', 'arrival_timezone', 'arrival_terminal']] = pd.json_normalize(df_raw['arrival'])[['airport', 'timezone', 'terminal']]
     data['airline_name'] = pd.json_normalize(df_raw['airline'])['name']
     data['flight_number'] = pd.json_normalize(df_raw['flight'])['number']
-    data = data.to_dict()
     
-    return(data)
+    data = replace_string(data)
+    file_path = save_processed_file(data)
+
+    return(file_path)
     
 
 def replace_string(data):
     """Replace slash for hifen"""
-    df_data = pd.DataFrame.from_dict(data)
 
-    df_data['departure_timezone'] = df_data['departure_timezone'].str.replace('/','-')
-    df_data['arrival_terminal'] = df_data['arrival_terminal'].str.replace('/','-')
+    data['departure_timezone'] = data['departure_timezone'].str.replace('/','-')
+    data['arrival_terminal'] = data['arrival_terminal'].str.replace('/','-')
     
+    return(data)
+
+def save_processed_file(data):
+    """Save processed file as csv."""
+    folder_name = "./processed/"
+    os.makedirs(folder_name, exist_ok=True)
+    file_path =  folder_name + datetime.now().strftime('%Y_%m_%d_%H_%M_%S') + ".csv"
+    data.to_csv(file_path, encoding='utf-8', index=False)
+    
+    return(file_path) 
 
 default_args = {
     'owner': 'fligoo',
@@ -52,25 +76,19 @@ with DAG(dag_id='aaa_flights_data_read',
          render_template_as_native_obj=True,
          schedule_interval='30 14 * * 2') as dag:
 
-    get_json_data = PythonOperator(
-        task_id='read_json',
-        python_callable=read_json,
+    get_and_save_json_data = PythonOperator(
+        task_id='read_save_json',
+        python_callable=read_save_json,
         dag=dag
     )
-    create_dataframe = PythonOperator(
+    process_and_save_data = PythonOperator(
         task_id='create_flights_data',
         python_callable=create_flights_data,
-        op_kwargs={"data_dict": "{{ti.xcom_pull('read_json')}}"},
-        dag=dag
-    )
-    string_replacing = PythonOperator(
-        task_id='replace_string',
-        python_callable=replace_string,
-        op_kwargs={"data": "{{ti.xcom_pull('create_flights_data')}}"},
+        op_kwargs={"file_path": "{{ti.xcom_pull('read_save_json')}}"},
         dag=dag
     )
 
 (
-    get_json_data >> create_dataframe
-    >> string_replacing
+    get_and_save_json_data >> process_and_save_data
+
 )
