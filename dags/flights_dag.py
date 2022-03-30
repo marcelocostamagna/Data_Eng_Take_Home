@@ -1,4 +1,3 @@
-
 from airflow import DAG
 #from airflow.models.variable import Variable
 from airflow.operators.python import PythonOperator
@@ -27,6 +26,7 @@ def read_save_json():
 
     return file_path
 
+
 def create_flights_data(file_path):
     """Read json data  and retreive useful columns."""
     with open(file_path) as file:
@@ -42,26 +42,24 @@ def create_flights_data(file_path):
     
     data = replace_string(data)
     file_path = save_processed_file(data)
-
-    return(file_path)
+    return file_path
     
 
 def replace_string(data):
     """Replace slash for hifen"""
-
     data['departure_timezone'] = data['departure_timezone'].str.replace('/','-')
     data['arrival_terminal'] = data['arrival_terminal'].str.replace('/','-')
-    
-    return(data)
+    return data
+
 
 def save_processed_file(data):
     """Save processed file as csv."""
     folder_name = "./processed/"
     os.makedirs(folder_name, exist_ok=True)
     file_path =  folder_name + datetime.now().strftime('%Y_%m_%d_%H_%M_%S') + ".csv"
-    data.to_csv(file_path, encoding='utf-8', index=False)
-    
-    return(file_path) 
+    data.to_csv(file_path, encoding='utf-8', index=False)  
+    return file_path
+
 
 def store_in_db(file_path):
     """Insert dataframe in Postgres DB."""
@@ -80,6 +78,7 @@ def store_in_db(file_path):
                                 index=False
                                 )
 
+
 default_args = {
     'owner': 'fligoo',
     'start_date': days_ago(7),
@@ -87,11 +86,11 @@ default_args = {
     'provide_context': True
 }
 
-with DAG(dag_id='aaa_flights_data_read',
+with DAG(dag_id='flights_data_read',
          description='read json, transform and insert on DB',
          default_args=default_args, 
          catchup=False,
-         render_template_as_native_obj=True,
+         #render_template_as_native_obj=True,
          schedule_interval='30 14 * * 2') as dag:
 
     get_and_save_json_data = PythonOperator(
@@ -117,5 +116,4 @@ with DAG(dag_id='aaa_flights_data_read',
 (
     get_and_save_json_data >> process_and_save_data
     >> save_into_db
-
 )
