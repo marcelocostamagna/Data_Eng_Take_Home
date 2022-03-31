@@ -89,11 +89,19 @@ Show proficiency in Python: By showing good practices in the structure and docum
  1. Find the container id where Airflow worker is running and connect to it:
  
  ```shell
- docker ps
- docker exec -it <worker_container_id> bash 
+    docker ps
+    docker exec -it <worker_container_id> bash 
  ```
-2. Run the below command specifying DAG id, task id and a date before today
+ 2. Run the below command specifying DAG id, task id and a date before today
 
-```shell
-airflow tasks test <dag_id> <task_id>  2021-01-01
+ ```shell
+    airflow tasks test <dag_id> <task_id>  2021-01-01
+ ```
+
+## Run linters
+
+ 1. Run the linters manually
+
+ ```shell
+    bash ./run_linters.sh
  ```
